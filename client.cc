@@ -51,6 +51,7 @@ int main(int argc, char* argv[])
 	if (server == NULL) {
 		fprintf(stderr, "ERROR, no such host\n");
 		exit(0);
+		
 	}
 	bzero((char*) &serv_addr, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;

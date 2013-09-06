@@ -1,6 +1,0 @@
-task:
-		g++ udp_client.cc -o udp_client
-		g++ udp_server.cc -o udp_server
-		
-clean:
-		rm -f *.o
