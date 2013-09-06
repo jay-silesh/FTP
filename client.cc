@@ -12,7 +12,7 @@
 #include <netdb.h>
 using namespace std;
 
-#define PACKETSIZE 1500
+#define PACKETSIZE 1501
 
 void error(const char* msg)
 {
@@ -23,11 +23,11 @@ void error(const char* msg)
 
 int main(int argc, char* argv[])
 {
-	int sockfd, portno, n;
+	int sockfd, portno, n,data_read;
 	struct sockaddr_in serv_addr;
 	struct hostent *server;
 	socklen_t servlen;
-	char buffer[256];
+	char buffer[PACKETSIZE];
 
 	char filename[256];
 	bzero(filename,256);
@@ -38,7 +38,10 @@ int main(int argc, char* argv[])
 		exit(0);
 
 	}
-	portno = atoi(argv[2]);
+
+
+
+	portno = atoi(argv[3]);
 	ifstream file(argv[1], ifstream::binary);	
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -60,22 +63,20 @@ int main(int argc, char* argv[])
         
 	if(file)
 	{
-		file.read(buffer, PACKETSIZE);
+		file.read(buffer, PACKETSIZE-1);
 		cout<<buffer;
-
+		data_read=file.gcount();
 	}
-	
+	   
+
 	file.close();
-	n = sendto(sockfd, buffer, strlen(buffer), 0,
-                        (struct sockaddr*) &serv_addr, servlen);
-	cout<<n;
-        /*if (n < 0)
-        	error("ERROR on sendto");*/
+	n = sendto(sockfd, buffer, data_read, 0, (struct sockaddr*) &serv_addr, servlen);
+	if (n < 0)
+        	error("ERROR on sendto");
 	
-	
+     
 
 
-	
 	return 0;
 
 }

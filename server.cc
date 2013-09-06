@@ -10,7 +10,7 @@
 #include <iostream>
 using namespace std;
 
-#define PACKETSIZE 1500
+#define PACKETSIZE 1501
 
 void error(const char *msg)
 {
