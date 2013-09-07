@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <iostream>
 #include <sstream>
+#include <map>
 using namespace std;
 
 #define PACKETSIZE 1400
@@ -20,21 +21,20 @@ void error(const char *msg)
 
 }
 
-uint64_t get_sequence_number(char *packet)
+int get_sequence_number(char *packet)
 {
-	char number[sizeof(uint64_t) +1];
-	uint64_t seq;
-	stringstream ss;
+	//char number[sizeof(int) +1];
+	int seq, x;
+	
+	//stringstream ss;
 
-	bzero(number, sizeof(uint64_t) +1);
-	strncpy(number,packet + PACKETSIZE - sizeof(uint64_t),sizeof(uint64_t));
-	ss<<number;
-	ss>>seq;
-
-	//return the seq number and then make the last 8 bytes as 0 so 
-	//the server will have pure data packet.
-	bzero(packet + PACKETSIZE - sizeof(uint64_t), sizeof(uint64_t));
-	return seq;	
+	//bzero(number, sizeof(int) +1);
+	//strncpy(number,packet,sizeof(int));
+	//ss<<number;
+	//ss>>seq;
+	memcpy(&seq, packet, sizeof(int));
+	x = ntohl(seq);
+	return x;	
 
 	
 
@@ -44,9 +44,13 @@ int main(int argc, char *argv[1])
 {
 	int sockfd, portno;
 	pid_t pid;
-	uint64_t sequence_number;
+	int last_packet_received = 0; //last inorder received
+	map<int, bool> sequence_map;
+	map<int, bool>::iterator it;
+	int sequence_number;
 	socklen_t clilen;
 	char buffer[PACKETSIZE];
+	char data[PACKETSIZE];
 	struct sockaddr_in serv_addr, cli_addr;
 	int n;
 	signal(SIGCHLD,SIG_IGN);
@@ -83,7 +87,8 @@ int main(int argc, char *argv[1])
 
 		
 		bzero(buffer,PACKETSIZE);
-		n = recvfrom(sockfd, buffer, sizeof(buffer), 0,(struct sockaddr*) &cli_addr, &clilen);
+		bzero(data,PACKETSIZE);
+		n = recvfrom(sockfd, buffer, PACKETSIZE, 0,(struct sockaddr*) &cli_addr, &clilen);
 		if (n < 0)
 		error("ERROR on recvfrom");
 		
@@ -92,9 +97,20 @@ int main(int argc, char *argv[1])
 		{
 				break;
 		}
-		sequence_number =  get_sequence_number(buffer);	
-		fwrite(buffer,sizeof(char),strlen(buffer),fd);
-		counter = counter + n;	
+		sequence_number =  get_sequence_number(buffer);
+		memcpy(data, buffer+sizeof(int), PACKETSIZE- sizeof(int));	
+		it = sequence_map.find(sequence_number);
+		if ( it->second == false ) {
+			it->second = true;
+			if (sequence_number == (last_packet_received + 1) )
+			{
+				last_packet_received = sequence_number;
+			}
+			fwrite(data,sizeof(char),PACKETSIZE,fd);
+			counter = counter + n;	
+
+		}
+		//else do not write ie: duplicata packet.drop it
 
 	}
 	printf("%d bytes received\n",counter);
