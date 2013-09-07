@@ -15,18 +15,19 @@ using namespace std;
 
 #define PACKETSIZE 1400
 
-static uint64_t sequence_number = 0;
+static int sequence_number = 1;
 
 void append_sequence_number(char *packet)
 {
-	char number[sizeof(uint64_t)];
-	stringstream ss;
-	ss << sequence_number++;
-	ss>>number;
-	strncpy(packet + PACKETSIZE - sizeof(uint64_t) , number, sizeof(uint64_t));
-	
+	//char number[sizeof(int)];
+	//stringstream ss;
+	//ss << sequence_number++;
+	//ss>>number;
+	//strncpy(packet + PACKETSIZE - sizeof(int) , number, sizeof(int));
+	int x = htonl(sequence_number);	
+	memcpy(packet + 0, &x, sizeof(int));
 
-
+	sequence_number++;
 } 
 
 void error(const char* msg)
@@ -88,11 +89,11 @@ int main(int argc, char* argv[])
 	int m=1,counter=0;
 	while(m!=0)
    	{
-		buffer = (char *)calloc(sizeof(char)*PACKETSIZE,1);
+		buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
 		append_sequence_number(buffer);
-		m = fread(buffer, 1, PACKETSIZE - sizeof(uint64_t),fd);
+		m = fread(buffer + sizeof(int), 1, PACKETSIZE - sizeof(int),fd);
 		
-		n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*) &serv_addr, servlen);
+		n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
 		counter = n+counter;
 		if (n < 0)
         	error("ERROR on sendto"); 
@@ -108,11 +109,6 @@ int main(int argc, char* argv[])
 	   
 
 	
-	
-	
-     
-
-
 	return 0;
 
 }

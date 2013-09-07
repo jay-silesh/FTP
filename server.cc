@@ -23,21 +23,10 @@ void error(const char *msg)
 
 int get_sequence_number(char *packet)
 {
-	//char number[sizeof(int) +1];
 	int seq, x;
-	
-	//stringstream ss;
-
-	//bzero(number, sizeof(int) +1);
-	//strncpy(number,packet,sizeof(int));
-	//ss<<number;
-	//ss>>seq;
 	memcpy(&seq, packet, sizeof(int));
 	x = ntohl(seq);
 	return x;	
-
-	
-
 }
 
 int main(int argc, char *argv[1])
