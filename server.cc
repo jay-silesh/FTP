@@ -15,9 +15,12 @@
 
 using namespace std;
 
+/*
+
 #define PACKETSIZE 1400
 #define DATASIZE PACKETSIZE-sizeof(int)
 #define HAEDERSIZE sizeof(int)
+*/
 
 char addr_str[INET_ADDRSTRLEN+1];
 
@@ -33,6 +36,7 @@ map<int, char*> storing_map;
 
 
 int last_packet_received = 0; //last inorder received
+int last_packet_number=-1;
 int sequence_number;
 
 
@@ -44,12 +48,72 @@ void error(const char *msg)
 }
 
 
+void print_data()
+{
+
+	cout<<"\n\n\nWRITING DATA....\n\n";	
+	FILE *fp = fopen("output.txt", "w");
+	for(it=recieved_map.begin();it!=recieved_map.end();it++)
+	{
+		//cout<<"\n\n**************\n\n"<<"Pakcet no:"<<it->first<<"-->"<<it->second;
+		fwrite(it->second,1,DATASIZE,fp);
+		
+	}
+	fwrite("\0",1,1,fp);
+	fclose(fp);
+	cout<<"\n"<<recieved_map.size()<<endl;
+	exit(0);
+}
+
+
+bool check_all_packets_recieved()
+{
+	cout<<"\nMap size is "<<recieved_map.size()<<endl;
+	if(recieved_map.size()==last_packet_number)
+	{
+		cout<<"\n\nRECIEVED ALL PACKETS...\n";
+
+				
+		int sockfd2 = socket(AF_INET, SOCK_DGRAM, 0);
+		struct sockaddr_in serv_addr2;
+		struct hostent *server2;
+		bzero((char*) &serv_addr2, sizeof(serv_addr2));
+		serv_addr2.sin_family = AF_INET;
+		bcopy((char*)server2->h_addr,(char*)&serv_addr2.sin_addr.s_addr,server2->h_length);
+		serv_addr2.sin_port = htons(PORTNUMBER);
+		int servlen2 = sizeof(serv_addr);
+
+		char *buffer = (char *)calloc(sizeof(char)*10, 1);
+		int temp=htonl(0);
+		memcpy(buffer, &temp, sizeof(int));
+		memcpy(buffer + 4, &temp, sizeof(int));
+		sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &serv_addr2, servlen2);
+		close(sockfd2);
+		return true;
+	}	
+	else
+	{
+		cout<<"\n\nNOT RECIEVED ALL PACKETS...\n";
+		return false;
+	}
+
+}
+
 
 void *check_map(void* flag_retran)
 {
 
 	bool *flag_retrans=(bool*)flag_retran;
-	cout<<"\n\nChecking map and sending retransmission packets..........\n\n";
+		
+
+	if(check_all_packets_recieved())
+		print_data();
+
+	if(*flag_retrans)
+		cout<<"\n\nRetransmission packets..........\n\n";
+	else
+		cout<<"\n\nUpdating map.........\n\n";
+
 	for(it = recieved_map.find(last_packet_received);it!=recieved_map.end();)
 	{	
 		it++;
@@ -61,12 +125,23 @@ void *check_map(void* flag_retran)
 		{
 			if(*flag_retrans)
 			{
-				int temp=it->first;
+				
+				int sockfd2 = socket(AF_INET, SOCK_DGRAM, 0);
+				struct sockaddr_in serv_addr2;
+				struct hostent *server2;
+				bzero((char*) &serv_addr2, sizeof(serv_addr2));
+				serv_addr2.sin_family = AF_INET;
+				bcopy((char*)server2->h_addr,(char*)&serv_addr2.sin_addr.s_addr,server2->h_length);
+				serv_addr2.sin_port = htons(PORTNUMBER);
+				int servlen2 = sizeof(serv_addr);
+
 				char *buffer = (char *)calloc(sizeof(char)*10, 1);
-				int x = htonl(sequence_number);	
-				memcpy(buffer, &last_packet_received, sizeof(int));
+				int lpr = htonl(last_packet_received);	
+				int temp=htonl(it->first);
+				memcpy(buffer, &lpr, sizeof(int));
 				memcpy(buffer + 4, &temp, sizeof(int));		
-				sendto(sockfd,buffer,sizeof(int)*2,0,(struct sockaddr *) &cli_addr,sizeof(sockaddr_in));
+				sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &serv_addr2, servlen2);
+				close(sockfd2);
 				break;
 			}
 			else
@@ -78,10 +153,6 @@ void *check_map(void* flag_retran)
 }
 
 
-
-
-
-
 int main(int argc, char *argv[1])
 {
 	char buffer[PACKETSIZE];
@@ -91,7 +162,6 @@ int main(int argc, char *argv[1])
 	bool true_flag=true,false_flag=false;
 	
 
-	
 	int n;
 	signal(SIGCHLD,SIG_IGN);
 	if (argc < 2) {
@@ -125,6 +195,7 @@ int main(int argc, char *argv[1])
 	int counter=0;
 	int check_counter=0;
 	bool check_flag=false;
+	
 	while(1) 
 	{ 
 
@@ -140,16 +211,16 @@ int main(int argc, char *argv[1])
 
 		if (n < 0)
 		error("ERROR on recvfrom");		
-		if(n==0)
-			break;
+		
+		
 		
 		//Extracting the data from the packet
 		sequence_number =  get_sequence_number(buffer);
 		data=get_data(buffer);
-		
+		cout<<"\nReceived Packet no "<<sequence_number<<"\tReceived data bytes"<<strlen(data)<<endl;
 		it = recieved_map.find(sequence_number);
 		if ( it==recieved_map.end()) {
-		
+			cout<<"\ninserting packet "<<sequence_number<<endl;
 			recieved_map.insert(pair<int,char*>(sequence_number,data));			
 			if(sequence_number == (last_packet_received + 1) )
 			{
@@ -170,14 +241,29 @@ int main(int argc, char *argv[1])
 			}			
 			counter = counter + n;	
 		
+
+			if(strlen(data)<DATASIZE)
+			{
+				if(last_packet_number==-1)
+					last_packet_number=get_sequence_number(buffer)+1;
+				
+				cout<<"\n\nTHE LAST PACKET IS "<<last_packet_number<<endl;
+				if(check_all_packets_recieved())
+				{
+					print_data();
+				}
+
+			}	
+
 		}
-		//else do not write ie: duplicata packet.drop it
-		
+		else
+		{
+			cout<<"\n dropped packet "<<sequence_number<<endl;
+		}
 		
 	}
 
-	for(it=recieved_map.begin();it!=recieved_map.end();it++)
-		cout<<"\n\n**************\n\n"<<it->first<<"-->"<<it->second;
+	
 
 
 	close(sockfd);

@@ -24,7 +24,7 @@ int get_sequence_number(char *packet)
 
 char* get_data(char *packet)
 {
-	char *buffer = (char *)calloc(sizeof(char)*(DATASIZE)+1, 1);
+	char *buffer = (char *)calloc(sizeof(char)*(DATASIZE), 1);
 	memcpy(buffer, packet+sizeof(int), DATASIZE);
 	return buffer;	
 }

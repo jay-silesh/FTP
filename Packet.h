@@ -1,7 +1,8 @@
 
 #define PACKETSIZE 1400
 #define DATASIZE PACKETSIZE-sizeof(int)
-#define HAEDERSIZE sizeof(int)
+#define HEADERSIZE sizeof(int)
+#define PORTNUMBER 10000
 
 typedef struct
 {
