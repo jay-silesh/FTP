@@ -13,7 +13,10 @@
 #include <sstream>
 using namespace std;
 
+
 #define PACKETSIZE 1400
+#define DATASIZE PACKETSIZE-sizeof(int)
+#define HAEDERSIZE sizeof(int)
 
 static int sequence_number = 1;
 
@@ -94,6 +97,7 @@ int main(int argc, char* argv[])
 		m = fread(buffer + sizeof(int), 1, PACKETSIZE - sizeof(int),fd);
 		
 		n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
+
 		counter = n+counter;
 		if (n < 0)
         	error("ERROR on sendto"); 
@@ -102,6 +106,7 @@ int main(int argc, char* argv[])
         	
         	
    	}
+
    	n = sendto(sockfd, buffer, 0, 0, (struct sockaddr*) &serv_addr, servlen);
    	printf("%d bytes sent from client\n",counter);
    	close(sockfd);

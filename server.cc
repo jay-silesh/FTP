@@ -10,9 +10,31 @@
 #include <iostream>
 #include <sstream>
 #include <map>
+#include <pthread.h>
+#include "Packet.h"
+
 using namespace std;
 
 #define PACKETSIZE 1400
+#define DATASIZE PACKETSIZE-sizeof(int)
+#define HAEDERSIZE sizeof(int)
+
+char addr_str[INET_ADDRSTRLEN+1];
+
+int sockfd, portno;
+socklen_t clilen;
+struct sockaddr_in serv_addr, cli_addr;
+
+
+map<int, char*> recieved_map;
+map<int, char*>::iterator it;
+map<int, char*>::reverse_iterator rit;
+map<int, char*> storing_map;
+
+
+int last_packet_received = 0; //last inorder received
+int sequence_number;
+
 
 void error(const char *msg)
 {
@@ -21,26 +43,55 @@ void error(const char *msg)
 
 }
 
-int get_sequence_number(char *packet)
+
+
+void *check_map(void* flag_retran)
 {
-	int seq, x;
-	memcpy(&seq, packet, sizeof(int));
-	x = ntohl(seq);
-	return x;	
+
+	bool *flag_retrans=(bool*)flag_retran;
+	cout<<"\n\nChecking map and sending retransmission packets..........\n\n";
+	for(it = recieved_map.find(last_packet_received);it!=recieved_map.end();)
+	{	
+		it++;
+		if(it->first==last_packet_received+1)
+		{
+			last_packet_received++;
+		}
+		else
+		{
+			if(*flag_retrans)
+			{
+				int temp=it->first;
+				char *buffer = (char *)calloc(sizeof(char)*10, 1);
+				int x = htonl(sequence_number);	
+				memcpy(buffer, &last_packet_received, sizeof(int));
+				memcpy(buffer + 4, &temp, sizeof(int));		
+				sendto(sockfd,buffer,sizeof(int)*2,0,(struct sockaddr *) &cli_addr,sizeof(sockaddr_in));
+				break;
+			}
+			else
+				break;
+
+		}
+	}
+
 }
+
+
+
+
+
 
 int main(int argc, char *argv[1])
 {
-	int sockfd, portno;
-	pid_t pid;
-	int last_packet_received = 0; //last inorder received
-	map<int, bool> sequence_map;
-	map<int, bool>::iterator it;
-	int sequence_number;
-	socklen_t clilen;
 	char buffer[PACKETSIZE];
-	char data[PACKETSIZE];
-	struct sockaddr_in serv_addr, cli_addr;
+	pthread_t check_map_thread,update_map;
+	bool first_run=true;
+
+	bool true_flag=true,false_flag=false;
+	
+
+	
 	int n;
 	signal(SIGCHLD,SIG_IGN);
 	if (argc < 2) {
@@ -60,8 +111,9 @@ int main(int argc, char *argv[1])
 	serv_addr.sin_addr.s_addr = INADDR_ANY;
 	serv_addr.sin_port = htons(portno);
 	if (bind(sockfd, (struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0)
-	
 		error("ERROR on binding");
+	
+
 	clilen = sizeof(cli_addr);
 	FILE *fd = fopen("output.txt","a+");
 	if(fd==NULL)
@@ -69,44 +121,71 @@ int main(int argc, char *argv[1])
 		printf("Error while opening file\n");
 		exit(1);
 	}
-		//	printf("packet size %ld\n",sizeof(buffer));
+	
 	int counter=0;
+	int check_counter=0;
+	bool check_flag=false;
 	while(1) 
 	{ 
 
-		
+		char *data;
 		bzero(buffer,PACKETSIZE);
-		bzero(data,PACKETSIZE);
 		n = recvfrom(sockfd, buffer, PACKETSIZE, 0,(struct sockaddr*) &cli_addr, &clilen);
-		if (n < 0)
-		error("ERROR on recvfrom");
 		
-		
-		if(n==0)
+		if(first_run)
 		{
-				break;
+			inet_ntop(AF_INET,&(cli_addr.sin_addr),addr_str,INET_ADDRSTRLEN);
+			first_run=false;
 		}
-		sequence_number =  get_sequence_number(buffer);
-		memcpy(data, buffer+sizeof(int), PACKETSIZE- sizeof(int));	
-		it = sequence_map.find(sequence_number);
-		if ( it->second == false ) {
-			it->second = true;
-			if (sequence_number == (last_packet_received + 1) )
-			{
-				last_packet_received = sequence_number;
-			}
-			fwrite(data,sizeof(char),PACKETSIZE,fd);
-			counter = counter + n;	
 
+		if (n < 0)
+		error("ERROR on recvfrom");		
+		if(n==0)
+			break;
+		
+		//Extracting the data from the packet
+		sequence_number =  get_sequence_number(buffer);
+		data=get_data(buffer);
+		
+		it = recieved_map.find(sequence_number);
+		if ( it==recieved_map.end()) {
+		
+			recieved_map.insert(pair<int,char*>(sequence_number,data));			
+			if(sequence_number == (last_packet_received + 1) )
+			{
+
+				last_packet_received = sequence_number;
+				if(check_flag)
+				{
+					check_flag=false;
+					check_map(&true_flag);
+					//iret2 = pthread_create( &update_map_thread, NULL, update_map, NULL);	
+				}
+				
+			}
+			else
+			{
+				check_flag=true;
+				int iret1 = pthread_create( &check_map_thread, NULL,check_map, (void*)&false_flag);
+			}			
+			counter = counter + n;	
+		
 		}
 		//else do not write ie: duplicata packet.drop it
-
+		
+		
 	}
-	printf("%d bytes received\n",counter);
+
+	for(it=recieved_map.begin();it!=recieved_map.end();it++)
+		cout<<"\n\n**************\n\n"<<it->first<<"-->"<<it->second;
+
+
 	close(sockfd);
 	fclose(fd);
 	return 0;
 }
+
+
 
 
 
