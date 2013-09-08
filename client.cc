@@ -17,6 +17,8 @@ using namespace std;
 
 
 static int sequence_number = 1;
+int delivered_packets=1;
+
 sem_t transmit;
 
 void retransmitter(int, int, int, struct sockaddr_in,char []);
@@ -72,7 +74,9 @@ int main(int argc, char* argv[])
 	}
 	bzero((char*) &serv_addr, sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
-	bcopy((char*)server->h_addr,(char*)&serv_addr.sin_addr.s_addr,server->h_length);
+	bcopy((char*)server->h_addr,
+		(char*)&serv_addr.sin_addr.s_addr,
+		 server->h_length);
 	serv_addr.sin_port = htons(portno);
 	servlen = sizeof(serv_addr);
 	   	
@@ -102,7 +106,7 @@ int main(int argc, char* argv[])
 
 	}
 	int m=1,counter=0;
-	while(m!=0)
+	while(1)
    	{
 
 		buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
@@ -122,10 +126,15 @@ int main(int argc, char* argv[])
         	error("ERROR on sendto"); 
         	free(buffer);
 		//bzero(buffer, PACKETSIZE);
-        	
+     	
+     	if(m==0)
+     	{
+     		sequence_number = delivered_packets;
+     		fseek(fd,0,SEEK_SET);
+     	}   	
         	
    	}
-   //	n = sendto(sockfd, buffer, 0, 0, (struct sockaddr*) &serv_addr, servlen);
+ 
    	printf("\n\n%d bytes sent from client\n",counter);
    	close(sockfd);
    	fclose(fd);
@@ -178,20 +187,30 @@ void create_listener(int original_sockfd, struct sockaddr_in original_serv_addr,
 	
 		memcpy(&start, buffer + 0, 4);
 		memcpy(&end, buffer + 4, 4);
+		
+		delivered_packets=start;
+
 		cout<<"start"<<start<<" end"<<end<<endl;
+		
+		sleep(1);
+		if(start==0 && end==0)
+		{
+			cout<<"\nSIGKILL RECIEVED FROM THE SERVER...\n";
+			exit(1);
+		}
+
 		pid = fork();
 		if(pid < 0) 
 			error("Error on fork in listener");
 		if(pid == 0)
 		{
-
-			
 			retransmitter(start,end, original_sockfd,original_serv_addr, filename);
 			close(sockfd);
-			//close(original_sockfd);
 			exit(0);
+		}
+		else
+			wait();
 
-		}	
 
 	}
 }
@@ -221,5 +240,5 @@ void retransmitter(int start, int end, int sockfd, struct sockaddr_in serv_addr,
 	}
 	sem_post(&transmit);
 
-	exit(0);
+
 }

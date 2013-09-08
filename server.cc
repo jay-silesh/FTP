@@ -1,13 +1,20 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <signal.h>
 #include <iostream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <queue>
+#include <fstream>
+#include <netdb.h>
+#include <sstream>
+#include <signal.h>
 #include <sstream>
 #include <map>
 #include <pthread.h>
@@ -15,18 +22,18 @@
 
 using namespace std;
 
-/*
-
-#define PACKETSIZE 1400
-#define DATASIZE PACKETSIZE-sizeof(int)
-#define HAEDERSIZE sizeof(int)
-*/
 
 char addr_str[INET_ADDRSTRLEN+1];
+
+char * client_name;
 
 int sockfd, portno;
 socklen_t clilen;
 struct sockaddr_in serv_addr, cli_addr;
+
+
+
+
 
 
 map<int, char*> recieved_map;
@@ -36,6 +43,7 @@ map<int, char*> storing_map;
 
 
 int last_packet_received = 0; //last inorder received
+int last_out_of_order_packet_received = 0; //last inorder received
 int last_packet_number=-1;
 int sequence_number;
 
@@ -44,7 +52,6 @@ void error(const char *msg)
 {
 	perror(msg);
 	exit(1);
-
 }
 
 
@@ -74,20 +81,23 @@ bool check_all_packets_recieved()
 		cout<<"\n\nRECIEVED ALL PACKETS...\n";
 
 				
-		int sockfd2 = socket(AF_INET, SOCK_DGRAM, 0);
-		struct sockaddr_in serv_addr2;
-		struct hostent *server2;
-		bzero((char*) &serv_addr2, sizeof(serv_addr2));
-		serv_addr2.sin_family = AF_INET;
-		bcopy((char*)server2->h_addr,(char*)&serv_addr2.sin_addr.s_addr,server2->h_length);
-		serv_addr2.sin_port = htons(PORTNUMBER);
-		int servlen2 = sizeof(serv_addr);
-
+		int sockfd2;
+		sockfd2=socket(AF_INET,SOCK_DGRAM,0);
+		/*
+		struct sockaddr_in servaddr2;
+		socklen_t len2;   
+		bzero(&servaddr2,sizeof(servaddr2));
+		servaddr2.sin_family = AF_INET;
+		servaddr2.sin_addr.s_addr=htonl(gethostbyname(client_name));
+		servaddr2.sin_port=htons(PORTNUMBER);
+		*/
+				
 		char *buffer = (char *)calloc(sizeof(char)*10, 1);
-		int temp=htonl(0);
+   
+   		int temp=htonl(0);
 		memcpy(buffer, &temp, sizeof(int));
 		memcpy(buffer + 4, &temp, sizeof(int));
-		sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &serv_addr2, servlen2);
+		sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &cli_addr, sizeof(cli_addr));
 		close(sockfd2);
 		return true;
 	}	
@@ -125,22 +135,24 @@ void *check_map(void* flag_retran)
 		{
 			if(*flag_retrans)
 			{
-				
-				int sockfd2 = socket(AF_INET, SOCK_DGRAM, 0);
-				struct sockaddr_in serv_addr2;
-				struct hostent *server2;
-				bzero((char*) &serv_addr2, sizeof(serv_addr2));
-				serv_addr2.sin_family = AF_INET;
-				bcopy((char*)server2->h_addr,(char*)&serv_addr2.sin_addr.s_addr,server2->h_length);
-				serv_addr2.sin_port = htons(PORTNUMBER);
-				int servlen2 = sizeof(serv_addr);
+
+				int sockfd2;
+				sockfd2=socket(AF_INET,SOCK_DGRAM,0);
+				/*
+				struct sockaddr_in servaddr2;
+				socklen_t len2;   
+				bzero(&servaddr2,sizeof(servaddr2));
+				servaddr2.sin_family = AF_INET;
+				servaddr2.sin_addr.s_addr=htonl(gethostbyname(client_name));
+				servaddr2.sin_port=htons(PORTNUMBER);
+				*/
 
 				char *buffer = (char *)calloc(sizeof(char)*10, 1);
 				int lpr = htonl(last_packet_received);	
 				int temp=htonl(it->first);
 				memcpy(buffer, &lpr, sizeof(int));
 				memcpy(buffer + 4, &temp, sizeof(int));		
-				sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &serv_addr2, servlen2);
+				sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &cli_addr, sizeof(cli_addr));
 				close(sockfd2);
 				break;
 			}
@@ -169,6 +181,11 @@ int main(int argc, char *argv[1])
 		fprintf(stderr,"ERROR, no port provided\n");
 		exit(1);
 	}
+
+
+	client_name=argv[3];
+
+
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd < 0) {	
 		
@@ -218,6 +235,10 @@ int main(int argc, char *argv[1])
 		sequence_number =  get_sequence_number(buffer);
 		data=get_data(buffer);
 		cout<<"\nReceived Packet no "<<sequence_number<<"\tReceived data bytes"<<strlen(data)<<endl;
+		
+		cout<<"\n\nMap size is "<<recieved_map.size()<<endl;
+
+
 		it = recieved_map.find(sequence_number);
 		if ( it==recieved_map.end()) {
 			cout<<"\ninserting packet "<<sequence_number<<endl;
@@ -236,13 +257,19 @@ int main(int argc, char *argv[1])
 			}
 			else
 			{
-				check_flag=true;
+				//out of order module...
+				if(sequence_number>last_out_of_order_packet_received)
+					last_out_of_order_packet_received=sequence_number;
+
+				if(last_out_of_order_packet_received==last_packet_received)
+					check_flag=true;
+				
 				int iret1 = pthread_create( &check_map_thread, NULL,check_map, (void*)&false_flag);
 			}			
 			counter = counter + n;	
 		
 
-			if(strlen(data)<DATASIZE)
+			if(strlen(data)<DATASIZE || last_packet_number!=-1)
 			{
 				if(last_packet_number==-1)
 					last_packet_number=get_sequence_number(buffer)+1;
