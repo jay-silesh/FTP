@@ -19,10 +19,8 @@ using namespace std;
 static int sequence_number = 1;
 int delivered_packets=1;
 
-sem_t transmit;
 
-void retransmitter(int, int, int, struct sockaddr_in,char []);
-void create_listener(int,struct sockaddr_in,char []);
+void create_listener();
 void append_sequence_number(char *packet,int sequence_no)
 {
 	int x = htonl(sequence_no);	
@@ -36,6 +34,17 @@ void error(const char* msg)
 	exit(0);
 
 }
+
+
+void create_transmission_connection()
+{
+
+	
+
+	
+}
+
+
 
 int main(int argc, char* argv[])
 {
@@ -80,11 +89,6 @@ int main(int argc, char* argv[])
 	serv_addr.sin_port = htons(portno);
 	servlen = sizeof(serv_addr);
 	   	
-	if( sem_init(&transmit,1,1) < 0)
-    	{
-    	  error("semaphore initilization");
-     	   exit(0);
-    	}
 	pid  = fork();
 	if(pid < 0)
 	{
@@ -92,13 +96,15 @@ int main(int argc, char* argv[])
 		error("ERROR on fork");
 		
 	}
-	if(pid == 0) {
-
+	if(pid>0) {
 		close(sockfd);
-		create_listener(sockfd, serv_addr, filename);
+		cout<<"\nCreated a child process....\n";
+		//sleep(3);
+		create_listener();
 		exit(0);
 	}
 	 
+	//sleep(10); 
 	FILE *fd = fopen(argv[1],"r");
 	if(fd == NULL)
 	{
@@ -114,23 +120,19 @@ int main(int argc, char* argv[])
 		sequence_number++;
 		m = fread(buffer +HEADERSIZE, 1, DATASIZE,fd);
 		
-		sem_wait(&transmit);
 		n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
-		cout<<"Sending the packet "<<sequence_number-1<<endl;
-		sem_post(&transmit);
-
-		//usleep(500);
+		//cout<<"Sending the packet "<<sequence_number-1<<endl;
+		
 		counter = n+counter;
 		
 		if (n < 0)
         	error("ERROR on sendto"); 
         	free(buffer);
-		//bzero(buffer, PACKETSIZE);
-     	
+		
      	if(m==0)
      	{
      		sequence_number = delivered_packets;
-     		fseek(fd,0,SEEK_SET);
+     		fseek(fd,sequence_number*DATASIZE,SEEK_SET);
      	}   	
         	
    	}
@@ -140,105 +142,69 @@ int main(int argc, char* argv[])
    	fclose(fd);
 	   
 
-	
-	
-	
-     
-
-
 	return 0;
 
 }
 
-void create_listener(int original_sockfd, struct sockaddr_in original_serv_addr,char filename[256])
+void create_listener()
 {
+	cout<<"\n\nCreated the listener......\n\n\n";
+	//sleep(3);
+
+	int sockfd2,newsockfd2;
+	socklen_t serverlen2;
+
+	struct sockaddr_in serv_addr2, cli_addr2;
+	sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
+	if (sockfd2 < 0) 
+		error("ERROR opening socket");
+
+	bzero((char *) &cli_addr2, sizeof(cli_addr2));
+	cli_addr2.sin_family = AF_INET;
+	cli_addr2.sin_addr.s_addr = INADDR_ANY;
+	cli_addr2.sin_port = htons(PORTNUMBER);
+
+	if (bind(sockfd2, (struct sockaddr *) &cli_addr2,sizeof(cli_addr2)) < 0) 
+	  error("ERROR on binding");
 	
-	int sockfd, portno, n;
-	socklen_t clilen;
-    struct sockaddr_in serv_addr, cli_addr;
-	signal(SIGCHLD,SIG_IGN);
-	char buffer[10];
-	pid_t pid;
-	int start,end;	
+	listen(sockfd2,5);
+	serverlen2 = sizeof(serv_addr2);
 
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-        if (sockfd < 0) {
+	while (1)
+	{
+		int start,end;
 
-                error("ERROR opening socket");
+		cout<<"\nAccepted connection....";
 
-        }
-        bzero((char*)&serv_addr, sizeof(serv_addr));
-        portno = PORTNUMBER;
-        serv_addr.sin_family = AF_INET;
-        serv_addr.sin_addr.s_addr = INADDR_ANY;
-        serv_addr.sin_port = htons(portno);
-        if (bind(sockfd, (struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0)
-                error("ERROR on binding");
-        clilen = sizeof(cli_addr);
-	while (1) {
-	
-		bzero(buffer,10);
-		n = recvfrom(sockfd, buffer, sizeof(int)*2, 0,(struct sockaddr*) &cli_addr, &clilen);
-        	if (n < 0)
-               	error("ERROR on recvfrom");
+		newsockfd2 = accept(sockfd2,(struct sockaddr *) &serv_addr2,&serverlen2);
+		if (newsockfd2 < 0) 
+			error("ERROR on accept");
+
+		char *buffer2 = (char *)calloc(sizeof(char)*10, 1);		
+
+		cout<<"\nWaiting to read...\n";
+		int n = read(newsockfd2,buffer2,sizeof(int)*2);
+		if (n < 0) 
+			error("ERROR reading from socket");
 
 
-	
-	
-		memcpy(&start, buffer + 0, 4);
-		memcpy(&end, buffer + 4, 4);
+		memcpy(&start, buffer2 + 0, 4);
+		memcpy(&end, buffer2 + 4, 4);
+		start = ntohl(start);
+		end = ntohl(end);
 		
+		cout<<"\nReading data.....start"<<start<<" end"<<end<<endl;
+		//sleep(5);
 		delivered_packets=start;
 
-		cout<<"start"<<start<<" end"<<end<<endl;
-		
-		sleep(1);
 		if(start==0 && end==0)
 		{
 			cout<<"\nSIGKILL RECIEVED FROM THE SERVER...\n";
 			exit(1);
-		}
-
-		pid = fork();
-		if(pid < 0) 
-			error("Error on fork in listener");
-		if(pid == 0)
-		{
-			retransmitter(start,end, original_sockfd,original_serv_addr, filename);
-			close(sockfd);
-			exit(0);
-		}
-		else
-			wait();
-
-
+		}	
+	
 	}
+	close(sockfd2);	
 }
 
 
-void retransmitter(int start, int end, int sockfd, struct sockaddr_in serv_addr,char filename[256])
-{
-	cout<<filename;
-	int counter = start;
-	char *buffer;
-	int m,n;
-	socklen_t servlen;
-	FILE *fp = fopen(filename, "r");
-	if(fp == NULL)
-    {
-		error("ERROR IN OPENING A FILE");
-	}
-	sem_wait(&transmit);
-	while(counter < start)
-	{
-		buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
-        append_sequence_number(buffer, counter);
-		fseek(fp, (counter-1)*DATASIZE,SEEK_SET);
-        m = fread(buffer + HEADERSIZE, 1, DATASIZE,fp);
-        n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
-		counter++;
-	}
-	sem_post(&transmit);
-
-
-}

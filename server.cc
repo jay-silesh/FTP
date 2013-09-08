@@ -31,11 +31,6 @@ int sockfd, portno;
 socklen_t clilen;
 struct sockaddr_in serv_addr, cli_addr;
 
-
-
-
-
-
 map<int, char*> recieved_map;
 map<int, char*>::iterator it;
 map<int, char*>::reverse_iterator rit;
@@ -78,28 +73,46 @@ bool check_all_packets_recieved()
 	cout<<"\nMap size is "<<recieved_map.size()<<endl;
 	if(recieved_map.size()==last_packet_number)
 	{
-		cout<<"\n\nRECIEVED ALL PACKETS...\n";
-
-				
+		cout<<"\n\nRECIEVED ALL PACKETS...\n";				
 		int sockfd2;
-		sockfd2=socket(AF_INET,SOCK_DGRAM,0);
-		/*
-		struct sockaddr_in servaddr2;
-		socklen_t len2;   
-		bzero(&servaddr2,sizeof(servaddr2));
-		servaddr2.sin_family = AF_INET;
-		servaddr2.sin_addr.s_addr=htonl(gethostbyname(client_name));
-		servaddr2.sin_port=htons(PORTNUMBER);
-		*/
-				
-		char *buffer = (char *)calloc(sizeof(char)*10, 1);
-   
-   		int temp=htonl(0);
-		memcpy(buffer, &temp, sizeof(int));
-		memcpy(buffer + 4, &temp, sizeof(int));
-		sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &cli_addr, sizeof(cli_addr));
-		close(sockfd2);
+	    struct sockaddr_in client_addr2;
+	    struct hostent *client2;
+	    client2 = gethostbyname(client_name);
+	    if (client2 == NULL) {
+	        fprintf(stderr,"ERROR, no such host\n");
+	        exit(0);
+	    }
+	    bzero((char *) &client_addr2, sizeof(client_addr2));
+	    client_addr2.sin_family = AF_INET;
+
+	    bcopy((char *)client2->h_addr, 
+	         (char *)&client_addr2.sin_addr.s_addr,
+	         client2->h_length);
+	    
+	    client_addr2.sin_port = htons(PORTNUMBER);
+	    
+	    sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
+	    if (sockfd2 < 0) 
+	        error("ERROR opening socket");
+	    
+	    if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
+	        error("ERROR connecting");
+	    
+
+	    char *buffer2 = (char *)calloc(sizeof(char)*10, 1);	   
+		int temp=htonl(0);
+		memcpy(buffer2, &temp, sizeof(int));
+		memcpy(buffer2 + 4, &temp, sizeof(int));
+		int n = write(sockfd2,buffer2,sizeof(int)*2);
+	    if (n < 0) 
+	        error("ERROR writing to socket");    
+	       
+	    close(sockfd2);
+
+	    
 		return true;
+
+
 	}	
 	else
 	{
@@ -124,6 +137,9 @@ void *check_map(void* flag_retran)
 	else
 		cout<<"\n\nUpdating map.........\n\n";
 
+	cout<<"\n\nFlag got is "<<*flag_retrans<<endl;
+	//sleep(5);
+
 	for(it = recieved_map.find(last_packet_received);it!=recieved_map.end();)
 	{	
 		it++;
@@ -133,32 +149,54 @@ void *check_map(void* flag_retran)
 		}
 		else
 		{
-			if(*flag_retrans)
+			if(*flag_retrans==true)
 			{
 
+				cout<<"\n\nRECIEVED ALL PACKETS...\n";				
 				int sockfd2;
-				sockfd2=socket(AF_INET,SOCK_DGRAM,0);
-				/*
-				struct sockaddr_in servaddr2;
-				socklen_t len2;   
-				bzero(&servaddr2,sizeof(servaddr2));
-				servaddr2.sin_family = AF_INET;
-				servaddr2.sin_addr.s_addr=htonl(gethostbyname(client_name));
-				servaddr2.sin_port=htons(PORTNUMBER);
-				*/
+				struct sockaddr_in client_addr2;
+				struct hostent *client2;
+				client2 = gethostbyname(client_name);
 
-				char *buffer = (char *)calloc(sizeof(char)*10, 1);
+
+
+				if (client2 == NULL) {
+				    fprintf(stderr,"ERROR, no such host\n");
+				    exit(0);
+				}
+				bzero((char *) &client_addr2, sizeof(client_addr2));
+				client_addr2.sin_family = AF_INET;
+
+				bcopy((char *)client2->h_addr, 
+				     (char *)&client_addr2.sin_addr.s_addr,
+				     client2->h_length);
+
+				client_addr2.sin_port = htons(PORTNUMBER);
+
+				sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
+				if (sockfd2 < 0) 
+				    error("ERROR opening socket");
+
+				if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
+				    error("ERROR connecting");
+				
+				char *buffer2 = (char *)calloc(sizeof(char)*10, 1);
+				cout<<"\nSending data..."<<last_packet_received<<"\t"<<it->first<<endl;
 				int lpr = htonl(last_packet_received);	
 				int temp=htonl(it->first);
-				memcpy(buffer, &lpr, sizeof(int));
-				memcpy(buffer + 4, &temp, sizeof(int));		
-				sendto(sockfd2, buffer, sizeof(int)*2, 0, (struct sockaddr*) &cli_addr, sizeof(cli_addr));
-				close(sockfd2);
+				memcpy(buffer2, &lpr,sizeof(int));
+				memcpy(buffer2 + 4, &temp,sizeof(int) );		
+				
+				int n = write(sockfd2,buffer2,sizeof(int)*2);
+			    if (n < 0) 
+			        error("ERROR writing to socket");    
+				cout<<"\n\n\n****************Finsihed retrans...******************\n";
+	    		//sleep(1);	       
+			    close(sockfd2);
 				break;
 			}
 			else
 				break;
-
 		}
 	}
 
@@ -183,7 +221,7 @@ int main(int argc, char *argv[1])
 	}
 
 
-	client_name=argv[3];
+	client_name=argv[2];
 
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -250,21 +288,27 @@ int main(int argc, char *argv[1])
 				if(check_flag)
 				{
 					check_flag=false;
-					check_map(&true_flag);
+					cout<<"\nNOT Creating a thread and .....Sending true flag";
+					//sleep(5);
+					check_map((void*)&false_flag);
+
 					//iret2 = pthread_create( &update_map_thread, NULL, update_map, NULL);	
 				}
 				
 			}
 			else
 			{
+				check_flag=true;
 				//out of order module...
 				if(sequence_number>last_out_of_order_packet_received)
 					last_out_of_order_packet_received=sequence_number;
 
 				if(last_out_of_order_packet_received==last_packet_received)
-					check_flag=true;
+					check_flag=false;
+				cout<<"\nCreating a thread and .....Sending true flag";
+				int iret1 = pthread_create( &check_map_thread, NULL,check_map, (void*)&true_flag);
+				//sleep(5);
 				
-				int iret1 = pthread_create( &check_map_thread, NULL,check_map, (void*)&false_flag);
 			}			
 			counter = counter + n;	
 		
