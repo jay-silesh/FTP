@@ -31,6 +31,12 @@ int sockfd, portno;
 socklen_t clilen;
 struct sockaddr_in serv_addr, cli_addr;
 
+
+int sockfd2;
+struct sockaddr_in client_addr2;
+struct hostent *client2;
+bool retrans_flag=true;
+
 map<int, char*> recieved_map;
 map<int, char*>::iterator it;
 map<int, char*>::reverse_iterator rit;
@@ -48,6 +54,40 @@ void error(const char *msg)
 	perror(msg);
 	exit(1);
 }
+
+
+
+
+
+void create_retransmission_connection()
+{
+
+    client2 = gethostbyname(client_name);
+    if (client2 == NULL) {
+        fprintf(stderr,"ERROR, no such host\n");
+        exit(0);
+    }
+    bzero((char *) &client_addr2, sizeof(client_addr2));
+    client_addr2.sin_family = AF_INET;
+
+    bcopy((char *)client2->h_addr, 
+         (char *)&client_addr2.sin_addr.s_addr,
+         client2->h_length);
+    
+    client_addr2.sin_port = htons(PORTNUMBER);
+    
+    sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd2 < 0) 
+        error("ERROR opening socket");
+    
+    if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
+        error("ERROR connecting");
+	    
+}
+
+
+
+
 
 
 void print_data()
@@ -74,32 +114,7 @@ bool check_all_packets_recieved()
 	if(recieved_map.size()==last_packet_number)
 	{
 		cout<<"\n\nRECIEVED ALL PACKETS...\n";				
-		int sockfd2;
-	    struct sockaddr_in client_addr2;
-	    struct hostent *client2;
-	    client2 = gethostbyname(client_name);
-	    if (client2 == NULL) {
-	        fprintf(stderr,"ERROR, no such host\n");
-	        exit(0);
-	    }
-	    bzero((char *) &client_addr2, sizeof(client_addr2));
-	    client_addr2.sin_family = AF_INET;
-
-	    bcopy((char *)client2->h_addr, 
-	         (char *)&client_addr2.sin_addr.s_addr,
-	         client2->h_length);
-	    
-	    client_addr2.sin_port = htons(PORTNUMBER);
-	    
-	    sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
-	    if (sockfd2 < 0) 
-	        error("ERROR opening socket");
-	    
-	    if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
-	        error("ERROR connecting");
-	    
-
-	    char *buffer2 = (char *)calloc(sizeof(char)*10, 1);	   
+		char *buffer2 = (char *)calloc(sizeof(char)*10, 1);	   
 		int temp=htonl(0);
 		memcpy(buffer2, &temp, sizeof(int));
 		memcpy(buffer2 + 4, &temp, sizeof(int));
@@ -109,10 +124,7 @@ bool check_all_packets_recieved()
 	       
 	    close(sockfd2);
 
-	    
-		return true;
-
-
+	    return true;
 	}	
 	else
 	{
@@ -153,33 +165,6 @@ void *check_map(void* flag_retran)
 			{
 
 				cout<<"\n\nRECIEVED ALL PACKETS...\n";				
-				int sockfd2;
-				struct sockaddr_in client_addr2;
-				struct hostent *client2;
-				client2 = gethostbyname(client_name);
-
-
-
-				if (client2 == NULL) {
-				    fprintf(stderr,"ERROR, no such host\n");
-				    exit(0);
-				}
-				bzero((char *) &client_addr2, sizeof(client_addr2));
-				client_addr2.sin_family = AF_INET;
-
-				bcopy((char *)client2->h_addr, 
-				     (char *)&client_addr2.sin_addr.s_addr,
-				     client2->h_length);
-
-				client_addr2.sin_port = htons(PORTNUMBER);
-
-				sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
-				if (sockfd2 < 0) 
-				    error("ERROR opening socket");
-
-				if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
-				    error("ERROR connecting");
-				
 				char *buffer2 = (char *)calloc(sizeof(char)*10, 1);
 				cout<<"\nSending data..."<<last_packet_received<<"\t"<<it->first<<endl;
 				int lpr = htonl(last_packet_received);	
@@ -192,8 +177,7 @@ void *check_map(void* flag_retran)
 			        error("ERROR writing to socket");    
 				cout<<"\n\n\n****************Finsihed retrans...******************\n";
 	    		//sleep(1);	       
-			    close(sockfd2);
-				break;
+			    break;
 			}
 			else
 				break;
@@ -290,6 +274,11 @@ int main(int argc, char *argv[1])
 					check_flag=false;
 					cout<<"\nNOT Creating a thread and .....Sending true flag";
 					//sleep(5);
+					if(retrans_flag)
+					{
+						create_retransmission_connection();
+						retrans_flag=false;
+					}
 					check_map((void*)&false_flag);
 
 					//iret2 = pthread_create( &update_map_thread, NULL, update_map, NULL);	
@@ -306,6 +295,11 @@ int main(int argc, char *argv[1])
 				if(last_out_of_order_packet_received==last_packet_received)
 					check_flag=false;
 				cout<<"\nCreating a thread and .....Sending true flag";
+				if(retrans_flag)
+				{
+						create_retransmission_connection();
+						retrans_flag=false;
+				}
 				int iret1 = pthread_create( &check_map_thread, NULL,check_map, (void*)&true_flag);
 				//sleep(5);
 				

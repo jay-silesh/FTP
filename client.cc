@@ -36,16 +36,6 @@ void error(const char* msg)
 }
 
 
-void create_transmission_connection()
-{
-
-	
-
-	
-}
-
-
-
 int main(int argc, char* argv[])
 {
 	int sockfd, portno, n,data_read;
@@ -55,7 +45,6 @@ int main(int argc, char* argv[])
 	//char buffer[256];
 	socklen_t servlen;
 	//char buffer[PACKETSIZE];
-	char *buffer;
 	char filename[256];
 	bzero(filename,256);
 
@@ -92,19 +81,16 @@ int main(int argc, char* argv[])
 	pid  = fork();
 	if(pid < 0)
 	{
-	
 		error("ERROR on fork");
 		
 	}
-	if(pid>0) {
-		close(sockfd);
+	if(pid!=0) {
 		cout<<"\nCreated a child process....\n";
-		//sleep(3);
 		create_listener();
 		exit(0);
 	}
-	 
-	//sleep(10); 
+	
+
 	FILE *fd = fopen(argv[1],"r");
 	if(fd == NULL)
 	{
@@ -115,25 +101,26 @@ int main(int argc, char* argv[])
 	while(1)
    	{
 
-		buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
+		char *buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
 		append_sequence_number(buffer, sequence_number);
 		sequence_number++;
 		m = fread(buffer +HEADERSIZE, 1, DATASIZE,fd);
-		
 		n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
 		//cout<<"Sending the packet "<<sequence_number-1<<endl;
 		
 		counter = n+counter;
 		
 		if (n < 0)
-        	error("ERROR on sendto"); 
-        	free(buffer);
-		
+        {	error("ERROR on sendto!"); 
+    		exit(0);
+   		}
+        
      	if(m==0)
      	{
      		sequence_number = delivered_packets;
      		fseek(fd,sequence_number*DATASIZE,SEEK_SET);
-     	}   	
+     	} 
+     	free(buffer); 	
         	
    	}
  
@@ -141,15 +128,13 @@ int main(int argc, char* argv[])
    	close(sockfd);
    	fclose(fd);
 	   
-
 	return 0;
-
 }
+
 
 void create_listener()
 {
 	cout<<"\n\nCreated the listener......\n\n\n";
-	//sleep(3);
 
 	int sockfd2,newsockfd2;
 	socklen_t serverlen2;
@@ -170,16 +155,17 @@ void create_listener()
 	listen(sockfd2,5);
 	serverlen2 = sizeof(serv_addr2);
 
+	newsockfd2 = accept(sockfd2,(struct sockaddr *) &serv_addr2,&serverlen2);
+	if (newsockfd2 < 0) 
+		error("ERROR on accept");
+
 	while (1)
 	{
 		int start,end;
 
 		cout<<"\nAccepted connection....";
 
-		newsockfd2 = accept(sockfd2,(struct sockaddr *) &serv_addr2,&serverlen2);
-		if (newsockfd2 < 0) 
-			error("ERROR on accept");
-
+		
 		char *buffer2 = (char *)calloc(sizeof(char)*10, 1);		
 
 		cout<<"\nWaiting to read...\n";
@@ -195,13 +181,15 @@ void create_listener()
 		
 		cout<<"\nReading data.....start"<<start<<" end"<<end<<endl;
 		//sleep(5);
-		delivered_packets=start;
+		
 
 		if(start==0 && end==0)
 		{
 			cout<<"\nSIGKILL RECIEVED FROM THE SERVER...\n";
 			exit(1);
-		}	
+		}
+		else
+			delivered_packets=start;
 	
 	}
 	close(sockfd2);	
