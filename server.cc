@@ -22,7 +22,7 @@
 
 using namespace std;
 
-int ack_sleep_time=100;
+int ack_sleep_time=100000;
 
 
 char addr_str[INET_ADDRSTRLEN+1];
@@ -34,9 +34,11 @@ socklen_t clilen;
 struct sockaddr_in serv_addr, cli_addr;
 
 
-int sockfd2;
-struct sockaddr_in client_addr2;
-struct hostent *client2;
+int sockfd_s;
+struct sockaddr_in serv_addr_s;
+struct hostent *server_s;
+socklen_t servlen_s;
+
 bool retrans_flag=true;
 
 map<int, char*> recieved_map;
@@ -61,25 +63,28 @@ void print_data();
 
 bool check_all_packets_recieved()
 {
-	cout<<"\nMap size is "<<recieved_map.size()<<endl;
+	//cout<<"\nSECOND_THREAD_Map size is "<<recieved_map.size()<<endl;
 	if(recieved_map.size()==last_packet_number)
 	{
 		cout<<"\n\nRECIEVED ALL PACKETS...\n";				
-		char *buffer2 = (char *)calloc(sizeof(char)*10, 1);	   
+		print_data();
+		char *buffer2 = (char *)calloc(sizeof(char)*5, 1);	   
 		int temp=htonl(0);
 		memcpy(buffer2, &temp, sizeof(int));
-		memcpy(buffer2 + 4, &temp, sizeof(int));
-		int n = write(sockfd2,buffer2,sizeof(int)*2);
+		int n = sendto(sockfd_s, buffer2, sizeof(int)*1, 0, (struct sockaddr*) &serv_addr_s, servlen_s);
+		if (n < 0)
+		{	error("ERROR on sendto!"); 
+			exit(0);
+		}
 	    if (n < 0) 
 	        error("ERROR writing to socket");    
 	       
-	    close(sockfd2);
 	    free(buffer2);
 	    return true;
 	}	
 	else
 	{
-		cout<<"\n\nNOT RECIEVED ALL PACKETS...\n";
+		//cout<<"\n\nNOT RECIEVED ALL PACKETS...\n";
 		return false;
 	}
 
@@ -88,58 +93,38 @@ bool check_all_packets_recieved()
 
 void *check_map(void* arg1)
 {
-	client2 = gethostbyname(client_name);
-    if (client2 == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-        exit(0);
-    }
-    bzero((char *) &client_addr2, sizeof(client_addr2));
-    client_addr2.sin_family = AF_INET;
-
-    bcopy((char *)client2->h_addr, 
-         (char *)&client_addr2.sin_addr.s_addr,
-         client2->h_length);
-    
-    client_addr2.sin_port = htons(PORTNUMBER);    
-    sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd2 < 0) 
-        error("ERROR opening socket");
-    
-    if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
-        error("ERROR connecting");
+	sockfd_s = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd_s < 0)
+		error("ERROR opening socket");
+	server_s = gethostbyname(client_name);
+	if (server_s == NULL) {
+		fprintf(stderr, "ERROR, no such host\n");
+		exit(0);
+	}
+	bzero((char*) &serv_addr_s, sizeof(serv_addr_s));
+	serv_addr_s.sin_family = AF_INET;
+	bcopy((char*)server_s->h_addr,
+		(char*)&serv_addr_s.sin_addr.s_addr,
+		 server_s->h_length);
+	serv_addr_s.sin_port = htons(PORTNUMBER);
+	servlen_s = sizeof(serv_addr_s);
 
 	while(1)
 	{
 		if(check_all_packets_recieved())
 			print_data();
 		
-		for(it = recieved_map.find(last_packet_received);it!=recieved_map.end();)
-		{	
-			it++;
-			if(it->first==last_packet_received+1)
-			{
-				last_packet_received++;
+			char *buffer2 = (char *)calloc(sizeof(char)*5, 1);
+			//cout<<"\nSending data..."<<last_packet_received<<"\t"<<it->first<<endl;
+			int lpr = htonl(last_packet_received+1);	
+			memcpy(buffer2, &lpr,sizeof(int));
+			int n = sendto(sockfd_s, buffer2, sizeof(int)*1, 0, (struct sockaddr*) &serv_addr_s, servlen_s);
+			if (n < 0)
+			{	error("ERROR on sendto!"); 
+				exit(0);
 			}
-			else
-			{
-				cout<<"\n\nRECIEVED ALL PACKETS...\n";				
-				char *buffer2 = (char *)calloc(sizeof(char)*10, 1);
-				cout<<"\nSending data..."<<last_packet_received<<"\t"<<it->first<<endl;
-				int lpr = htonl(last_packet_received+1);	
-				int temp=htonl(it->first);
-				memcpy(buffer2, &lpr,sizeof(int));
-				memcpy(buffer2 + 4, &temp,sizeof(int) );		
-				
-				int n = write(sockfd2,buffer2,sizeof(int)*2);
-			    if (n < 0) 
-			        error("ERROR writing to socket");    
-				cout<<"\n\n\n****************Finsihed retrans...******************\n";
-				free(buffer2);
-	    		//sleep(1);	       
-			    break;
-			}
-		}
-		usleep(ack_sleep_time);
+		    free(buffer2);
+	    usleep(ack_sleep_time);
 	}
 
 }
@@ -147,7 +132,7 @@ void *check_map(void* arg1)
 
 int main(int argc, char *argv[1])
 {
-	char buffer[PACKETSIZE];
+	
 	pthread_t check_map_thread,update_map;
 	bool first_run=true;
 
@@ -190,6 +175,7 @@ int main(int argc, char *argv[1])
 	{ 
 
 		char *data;
+		char buffer[PACKETSIZE];
 		bzero(buffer,PACKETSIZE);
 		n = recvfrom(sockfd, buffer, PACKETSIZE, 0,(struct sockaddr*) &cli_addr, &clilen);
 		if (n < 0)
@@ -198,12 +184,13 @@ int main(int argc, char *argv[1])
 		//Extracting the data from the packet
 		sequence_number =  get_sequence_number(buffer);
 		data=get_data(buffer);
-		cout<<"\nReceived Packet no "<<sequence_number<<"\tReceived data bytes"<<strlen(data)<<endl;		
-		cout<<"\n\nMap size is "<<recieved_map.size()<<endl;
+		
+		//cout<<"\n\nMap size is "<<recieved_map.size()<<endl;
+		cout<<"\nREAL_THREAD_Received Packet no "<<sequence_number<<endl;
 
 		it = recieved_map.find(sequence_number);
 		if ( it==recieved_map.end()) {
-			cout<<"\ninserting packet "<<sequence_number<<endl;
+			//cout<<"\ninserting packet "<<sequence_number<<endl;
 			recieved_map.insert(pair<int,char*>(sequence_number,data));			
 			if(sequence_number == (last_packet_received + 1) )
 			{
@@ -250,11 +237,14 @@ int main(int argc, char *argv[1])
 
 void print_data()
 {
+
 	cout<<"\n\n\nWRITING DATA....\n\n";	
-	FILE *fp = fopen("output.txt", "w");
+	FILE *fp = fopen("output.txt", "w+");
 	for(it=recieved_map.begin();it!=recieved_map.end();it++)
-		fwrite(it->second,1,DATASIZE,fp);
-	fwrite("\0",1,1,fp);
+	{	
+		fwrite(it->second,1,strlen(it->second),fp);
+		cout<<it->second;
+	}	
 	fclose(fp);
 	cout<<"\n"<<recieved_map.size()<<endl;
 	exit(0);
