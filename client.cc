@@ -18,16 +18,17 @@
 
 using namespace std;
 
-#define SEND_TIMES 5
+#define SEND_TIMES 10
 
 pthread_mutex_t send_mutex;
 
 int ack_sleep_time=2000;
 
-int sequence_number = 1;
-int delivered_packets=1;
+static int sequence_number = 1;
+static int delivered_packets=1;
+static int last_packet_number=-1;
 
-FILE *fd;
+ifstream file;
 
 int sockfd;
 struct sockaddr_in serv_addr;
@@ -53,12 +54,17 @@ void error(const char* msg)
 
 int send_packet(int sq_no)
 {
-	cout<<"Sending the packet "<<sq_no<<endl;
+
+	cout<<"SEEKIGN TO  "<<sq_no-1<<endl;
 	char *buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
-	append_sequence_number(buffer, sequence_number);
-	fseek(fd,sq_no*DATASIZE,SEEK_SET);
-	int m = fread(buffer +HEADERSIZE, 1, DATASIZE,fd);
+	append_sequence_number(buffer, sq_no);
+	
+	fseek(fd,0,SEEK_SET);
+	fseek(fd,(sq_no-1)*DATASIZE,SEEK_CUR);
+	
+	int m = fread(buffer+HEADERSIZE, 1, DATASIZE,fd);
 	int n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
+	cout<<"\nData:"<<m;
 	if (n < 0)
     {	error("ERROR on sendto!"); 
     	exit(0);
@@ -84,8 +90,8 @@ int main(int argc, char* argv[])
 	}
 
 	pthread_t listener_thread;
-	int iret1 = pthread_create( &listener_thread, NULL,create_listener,NULL);
-
+	pthread_create( &listener_thread, NULL,create_listener,NULL);
+	
 	
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd < 0)
@@ -105,26 +111,27 @@ int main(int argc, char* argv[])
 	serv_addr.sin_port = htons(portno);
 	servlen = sizeof(serv_addr);
 	   	
-	fd = fopen(argv[1],"r");
-	if(fd == NULL)
-	{
-		error("ERROR IN OPENING A FILE");
+	file.open(argv[1], ios::in|ios::binary
 
-	}
 	int m=1;
 	while(1)
    	{
    		pthread_mutex_lock(&send_mutex);
-   		cout<<"\nSending in the real stuff...."<<sequence_number<<endl;
+   		cout<<"\nREAL: Sending PACKETS...."<<sequence_number<<endl;
 		m=send_packet(sequence_number);
 		pthread_mutex_unlock(&send_mutex);
-		sequence_number++;		
-		     
-     	if(m==0)
-     	{
-     		sequence_number = delivered_packets;
-     		fseek(fd,sequence_number*DATASIZE,SEEK_SET);
-     	} 
+				
+		sequence_number++;
+		if(m<DATASIZE)
+     	{	
+     		
+     		cout<<"\n The last packet is "<<sequence_number-1<<endl;
+     		sleep(10);
+     		last_packet_number=sequence_number-1;
+     		//sequence_number = delivered_packets;
+     		sequence_number =1;
+     	}
+     	 
      		
 	}
  
@@ -155,36 +162,37 @@ void *create_listener(void * arg1)
 
 	clilen_r = sizeof(cli_addr_r);
 	
+	cout<<"\nAccepted connection....";
 	while (1)
 	{
 		int start;
 
-		cout<<"\nAccepted connection....";		
+				
 		char *buffer2 = (char *)calloc(sizeof(char)*5, 1);		
-		cout<<"\nWaiting to read...\n";
 		
 		int n = recvfrom(sockfd_r, buffer2, sizeof(int)*1, 0,(struct sockaddr*) &cli_addr_r, &clilen_r);
 		if (n < 0)
 			error("ERROR on recvfrom");
 		
 		memcpy(&start, buffer2 + 0, 4);
-		start = ntohl(start)-1;
+		start = ntohl(start);
 		
-		cout<<"\nReading data.....start"<<start<<endl;
-		delivered_packets=start;
-		if(start==0)
+		cout<<"\nTHREAD: Recieved packet no to send: "<<start<<endl;
+		
+		if(start==-1)
 		{
 			cout<<"\nSIGKILL RECIEVED FROM THE SERVER...\n";
-			exit(1);
+			exit(0);
 		}
-		
+
+		delivered_packets=start;
 		pthread_mutex_lock(&send_mutex);		
-		cout<<"\nGet ready!!..will send "<<delivered_packets<<endl;
+		cout<<"\n**********************************Get ready!!..will send "<<delivered_packets<<endl;
 		//sleep(5);
+		cout<<"THREAD: ";
 		for(int temp_i=1;temp_i<=SEND_TIMES;temp_i++)
 		{	
-			send_packet(delivered_packets);
-			//sleep(3);
+			send_packet(start);
 			cout<<delivered_packets<<endl;
 		}
 			pthread_mutex_unlock(&send_mutex);
