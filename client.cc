@@ -15,12 +15,22 @@
 #include <semaphore.h>
 using namespace std;
 
+#define SEND_TIMES 4
 
-static int sequence_number = 1;
+int ack_sleep_time=2000;
+
+int sequence_number = 1;
 int delivered_packets=1;
 
+FILE *fd;
 
-void create_listener();
+int sockfd;
+struct sockaddr_in serv_addr;
+struct hostent *server;
+socklen_t servlen;
+
+
+void *create_listener(void * arg1);
 void append_sequence_number(char *packet,int sequence_no)
 {
 	int x = htonl(sequence_no);	
@@ -36,35 +46,45 @@ void error(const char* msg)
 }
 
 
+int send_packet(int sq_no)
+{
+	char *buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
+	append_sequence_number(buffer, sequence_number);
+	fseek(fd,sq_no*DATASIZE,SEEK_SET);
+	int m = fread(buffer +HEADERSIZE, 1, DATASIZE,fd);
+	int n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
+	if (n < 0)
+    {	error("ERROR on sendto!"); 
+    	exit(0);
+   	}
+   	cout<<"Sending the packet "<<sq_no<<endl;
+   	free(buffer); 
+   	return m;   
+}
+
+
 int main(int argc, char* argv[])
 {
-	int sockfd, portno, n,data_read;
+	int portno, n,data_read;
 	pid_t pid;
-	struct sockaddr_in serv_addr;
-	struct hostent *server;
-	//char buffer[256];
-	socklen_t servlen;
-	//char buffer[PACKETSIZE];
+	
 	char filename[256];
 	bzero(filename,256);
 
 	if (argc < 4) {
-	
 		fprintf(stderr, "usage %s <source> <destination>  <port>\n", argv[0]);
 		exit(0);
-
 	}
 
+	pthread_t listener_thread;
+	int iret1 = pthread_create( &listener_thread, NULL,create_listener,NULL);
 
-
-	portno = atoi(argv[3]);
-//	ifstream file(argv[1], ifstream::binary);	
 	
-
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd < 0)
 		error("ERROR opening socket");
 	server = gethostbyname(argv[2]);
+	portno = atoi(argv[3]);
 	if (server == NULL) {
 		fprintf(stderr, "ERROR, no such host\n");
 		exit(0);
@@ -78,53 +98,26 @@ int main(int argc, char* argv[])
 	serv_addr.sin_port = htons(portno);
 	servlen = sizeof(serv_addr);
 	   	
-	pid  = fork();
-	if(pid < 0)
-	{
-		error("ERROR on fork");
-		
-	}
-	if(pid!=0) {
-		cout<<"\nCreated a child process....\n";
-		create_listener();
-		exit(0);
-	}
-	
-
-	FILE *fd = fopen(argv[1],"r");
+	fd = fopen(argv[1],"r");
 	if(fd == NULL)
 	{
 		error("ERROR IN OPENING A FILE");
 
 	}
-	int m=1,counter=0;
+	int m=1;
 	while(1)
    	{
-
-		char *buffer = (char *)calloc(sizeof(char)*(PACKETSIZE), 1);
-		append_sequence_number(buffer, sequence_number);
-		sequence_number++;
-		m = fread(buffer +HEADERSIZE, 1, DATASIZE,fd);
-		n = sendto(sockfd, buffer, PACKETSIZE, 0, (struct sockaddr*) &serv_addr, servlen);
-		//cout<<"Sending the packet "<<sequence_number-1<<endl;
-		
-		counter = n+counter;
-		
-		if (n < 0)
-        {	error("ERROR on sendto!"); 
-    		exit(0);
-   		}
-        
+		m=send_packet(sequence_number);
+		sequence_number++;		
+		     
      	if(m==0)
      	{
      		sequence_number = delivered_packets;
      		fseek(fd,sequence_number*DATASIZE,SEEK_SET);
      	} 
-     	free(buffer); 	
-        	
-   	}
+     		
+	}
  
-   	printf("\n\n%d bytes sent from client\n",counter);
    	close(sockfd);
    	fclose(fd);
 	   
@@ -132,7 +125,7 @@ int main(int argc, char* argv[])
 }
 
 
-void create_listener()
+void *create_listener(void * arg1)
 {
 	cout<<"\n\nCreated the listener......\n\n\n";
 
@@ -163,16 +156,12 @@ void create_listener()
 	{
 		int start,end;
 
-		cout<<"\nAccepted connection....";
-
-		
+		cout<<"\nAccepted connection....";		
 		char *buffer2 = (char *)calloc(sizeof(char)*10, 1);		
-
 		cout<<"\nWaiting to read...\n";
 		int n = read(newsockfd2,buffer2,sizeof(int)*2);
 		if (n < 0) 
 			error("ERROR reading from socket");
-
 
 		memcpy(&start, buffer2 + 0, 4);
 		memcpy(&end, buffer2 + 4, 4);
@@ -180,9 +169,6 @@ void create_listener()
 		end = ntohl(end);
 		
 		cout<<"\nReading data.....start"<<start<<" end"<<end<<endl;
-		//sleep(5);
-		
-
 		if(start==0 && end==0)
 		{
 			cout<<"\nSIGKILL RECIEVED FROM THE SERVER...\n";
@@ -190,6 +176,11 @@ void create_listener()
 		}
 		else
 			delivered_packets=start;
+		
+		for(int temp_i=1;temp_i<=SEND_TIMES;temp_i++)
+			send_packet(delivered_packets);
+
+		free(buffer2);
 	
 	}
 	close(sockfd2);	

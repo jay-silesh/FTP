@@ -22,6 +22,8 @@
 
 using namespace std;
 
+int ack_sleep_time=100;
+
 
 char addr_str[INET_ADDRSTRLEN+1];
 
@@ -55,58 +57,7 @@ void error(const char *msg)
 	exit(1);
 }
 
-
-
-
-
-void create_retransmission_connection()
-{
-
-    client2 = gethostbyname(client_name);
-    if (client2 == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-        exit(0);
-    }
-    bzero((char *) &client_addr2, sizeof(client_addr2));
-    client_addr2.sin_family = AF_INET;
-
-    bcopy((char *)client2->h_addr, 
-         (char *)&client_addr2.sin_addr.s_addr,
-         client2->h_length);
-    
-    client_addr2.sin_port = htons(PORTNUMBER);
-    
-    sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd2 < 0) 
-        error("ERROR opening socket");
-    
-    if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
-        error("ERROR connecting");
-	    
-}
-
-
-
-
-
-
-void print_data()
-{
-
-	cout<<"\n\n\nWRITING DATA....\n\n";	
-	FILE *fp = fopen("output.txt", "w");
-	for(it=recieved_map.begin();it!=recieved_map.end();it++)
-	{
-		//cout<<"\n\n**************\n\n"<<"Pakcet no:"<<it->first<<"-->"<<it->second;
-		fwrite(it->second,1,DATASIZE,fp);
-		
-	}
-	fwrite("\0",1,1,fp);
-	fclose(fp);
-	cout<<"\n"<<recieved_map.size()<<endl;
-	exit(0);
-}
-
+void print_data();
 
 bool check_all_packets_recieved()
 {
@@ -123,7 +74,7 @@ bool check_all_packets_recieved()
 	        error("ERROR writing to socket");    
 	       
 	    close(sockfd2);
-
+	    free(buffer2);
 	    return true;
 	}	
 	else
@@ -135,39 +86,46 @@ bool check_all_packets_recieved()
 }
 
 
-void *check_map(void* flag_retran)
+void *check_map(void* arg1)
 {
+	client2 = gethostbyname(client_name);
+    if (client2 == NULL) {
+        fprintf(stderr,"ERROR, no such host\n");
+        exit(0);
+    }
+    bzero((char *) &client_addr2, sizeof(client_addr2));
+    client_addr2.sin_family = AF_INET;
 
-	bool *flag_retrans=(bool*)flag_retran;
+    bcopy((char *)client2->h_addr, 
+         (char *)&client_addr2.sin_addr.s_addr,
+         client2->h_length);
+    
+    client_addr2.sin_port = htons(PORTNUMBER);    
+    sockfd2 = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd2 < 0) 
+        error("ERROR opening socket");
+    
+    if (connect(sockfd2,(struct sockaddr *) &client_addr2,sizeof(client_addr2)) < 0) 
+        error("ERROR connecting");
+
+	while(1)
+	{
+		if(check_all_packets_recieved())
+			print_data();
 		
-
-	if(check_all_packets_recieved())
-		print_data();
-
-	if(*flag_retrans)
-		cout<<"\n\nRetransmission packets..........\n\n";
-	else
-		cout<<"\n\nUpdating map.........\n\n";
-
-	cout<<"\n\nFlag got is "<<*flag_retrans<<endl;
-	//sleep(5);
-
-	for(it = recieved_map.find(last_packet_received);it!=recieved_map.end();)
-	{	
-		it++;
-		if(it->first==last_packet_received+1)
-		{
-			last_packet_received++;
-		}
-		else
-		{
-			if(*flag_retrans==true)
+		for(it = recieved_map.find(last_packet_received);it!=recieved_map.end();)
+		{	
+			it++;
+			if(it->first==last_packet_received+1)
 			{
-
+				last_packet_received++;
+			}
+			else
+			{
 				cout<<"\n\nRECIEVED ALL PACKETS...\n";				
 				char *buffer2 = (char *)calloc(sizeof(char)*10, 1);
 				cout<<"\nSending data..."<<last_packet_received<<"\t"<<it->first<<endl;
-				int lpr = htonl(last_packet_received);	
+				int lpr = htonl(last_packet_received+1);	
 				int temp=htonl(it->first);
 				memcpy(buffer2, &lpr,sizeof(int));
 				memcpy(buffer2 + 4, &temp,sizeof(int) );		
@@ -176,12 +134,12 @@ void *check_map(void* flag_retran)
 			    if (n < 0) 
 			        error("ERROR writing to socket");    
 				cout<<"\n\n\n****************Finsihed retrans...******************\n";
+				free(buffer2);
 	    		//sleep(1);	       
 			    break;
 			}
-			else
-				break;
 		}
+		usleep(ack_sleep_time);
 	}
 
 }
@@ -195,7 +153,6 @@ int main(int argc, char *argv[1])
 
 	bool true_flag=true,false_flag=false;
 	
-
 	int n;
 	signal(SIGCHLD,SIG_IGN);
 	if (argc < 2) {
@@ -203,19 +160,17 @@ int main(int argc, char *argv[1])
 		fprintf(stderr,"ERROR, no port provided\n");
 		exit(1);
 	}
-
-
-	client_name=argv[2];
-
-
+	portno = atoi(argv[2]);
+	client_name=argv[1];
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd < 0) {	
 		
 		error("ERROR opening socket");
 
 	}
+
 	bzero((char*)&serv_addr, sizeof(serv_addr));
-	portno = atoi(argv[1]);
+	
 	serv_addr.sin_family = AF_INET;
 	serv_addr.sin_addr.s_addr = INADDR_ANY;
 	serv_addr.sin_port = htons(portno);
@@ -231,35 +186,20 @@ int main(int argc, char *argv[1])
 		exit(1);
 	}
 	
-	int counter=0;
-	int check_counter=0;
-	bool check_flag=false;
-	
 	while(1) 
 	{ 
 
 		char *data;
 		bzero(buffer,PACKETSIZE);
 		n = recvfrom(sockfd, buffer, PACKETSIZE, 0,(struct sockaddr*) &cli_addr, &clilen);
-		
-		if(first_run)
-		{
-			inet_ntop(AF_INET,&(cli_addr.sin_addr),addr_str,INET_ADDRSTRLEN);
-			first_run=false;
-		}
-
 		if (n < 0)
-		error("ERROR on recvfrom");		
-		
-		
+			error("ERROR on recvfrom");		
 		
 		//Extracting the data from the packet
 		sequence_number =  get_sequence_number(buffer);
 		data=get_data(buffer);
-		cout<<"\nReceived Packet no "<<sequence_number<<"\tReceived data bytes"<<strlen(data)<<endl;
-		
+		cout<<"\nReceived Packet no "<<sequence_number<<"\tReceived data bytes"<<strlen(data)<<endl;		
 		cout<<"\n\nMap size is "<<recieved_map.size()<<endl;
-
 
 		it = recieved_map.find(sequence_number);
 		if ( it==recieved_map.end()) {
@@ -267,46 +207,20 @@ int main(int argc, char *argv[1])
 			recieved_map.insert(pair<int,char*>(sequence_number,data));			
 			if(sequence_number == (last_packet_received + 1) )
 			{
-
 				last_packet_received = sequence_number;
-				if(check_flag)
-				{
-					check_flag=false;
-					cout<<"\nNOT Creating a thread and .....Sending true flag";
-					//sleep(5);
-					if(retrans_flag)
-					{
-						create_retransmission_connection();
-						retrans_flag=false;
-					}
-					check_map((void*)&false_flag);
-
-					//iret2 = pthread_create( &update_map_thread, NULL, update_map, NULL);	
-				}
-				
 			}
 			else
 			{
-				check_flag=true;
-				//out of order module...
 				if(sequence_number>last_out_of_order_packet_received)
 					last_out_of_order_packet_received=sequence_number;
 
-				if(last_out_of_order_packet_received==last_packet_received)
-					check_flag=false;
-				cout<<"\nCreating a thread and .....Sending true flag";
 				if(retrans_flag)
 				{
-						create_retransmission_connection();
+						int iret1 = pthread_create( &check_map_thread, NULL,check_map, NULL);
 						retrans_flag=false;
 				}
-				int iret1 = pthread_create( &check_map_thread, NULL,check_map, (void*)&true_flag);
-				//sleep(5);
-				
 			}			
-			counter = counter + n;	
-		
-
+			
 			if(strlen(data)<DATASIZE || last_packet_number!=-1)
 			{
 				if(last_packet_number==-1)
@@ -323,23 +237,25 @@ int main(int argc, char *argv[1])
 		}
 		else
 		{
-			cout<<"\n dropped packet "<<sequence_number<<endl;
+			cout<<"\n dropping packet "<<sequence_number<<endl;
 		}
+		free(data);
 		
 	}
-
-	
-
-
 	close(sockfd);
 	fclose(fd);
 	return 0;
 }
 
 
-
-
-
-
-
-
+void print_data()
+{
+	cout<<"\n\n\nWRITING DATA....\n\n";	
+	FILE *fp = fopen("output.txt", "w");
+	for(it=recieved_map.begin();it!=recieved_map.end();it++)
+		fwrite(it->second,1,DATASIZE,fp);
+	fwrite("\0",1,1,fp);
+	fclose(fp);
+	cout<<"\n"<<recieved_map.size()<<endl;
+	exit(0);
+}
