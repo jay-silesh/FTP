@@ -16,12 +16,13 @@
 #include <netdb.h> 
 #include <time.h>
 #include <sys/time.h>
+#include "common.h"
 
 
 using namespace std;
 queue<char *> data_queue;
 pthread_mutex_t file_mutex;
-pthread_t filewrite, secondsock, thirdsock;
+pthread_t filewrite, secondsock, thirdsock,fourthsock,fifthsock;
 FILE *fd;
 struct timeval start;
 struct timeval end;
@@ -33,12 +34,8 @@ int total_packets = 0;
 int last_length = 0;
 struct sockaddr_in  cli_addr_global;
 
-#define PACKETSIZE 1400
-#define DATASIZE (PACKETSIZE - sizeof(int))
-#define TCP_PORT 11000
-#define INITIAL_PORT 13000
-#define SOCK2 7001
-#define SOCK3 7002
+
+
  void sig_handler(int signo)
 {
  if (signo == SIGINT)
@@ -157,6 +154,8 @@ void Terminate(char * server_ip)
   
     pthread_cancel(secondsock);
     pthread_cancel(thirdsock);
+    pthread_cancel(fourthsock);
+    pthread_cancel(fifthsock);
     exit(0);
    
 }
@@ -298,12 +297,14 @@ char server_IP[255]="localhost";
 int main(int argc, char *argv[])
 {
     
-   int port1,port2;
-   port1=7001;
-   port2=7002;
+   int port1=7001;
+   int port2=7002;
+   int port3=SOCK4;
+   int port4=SOCK5;
+
 	
-	if (signal(SIGINT, sig_handler) == SIG_ERR)
- printf("\ncan't catch SIGINT\n");
+    if (signal(SIGINT, sig_handler) == SIG_ERR)
+        printf("\ncan't catch SIGINT\n");
 
 
 
@@ -321,6 +322,18 @@ int main(int argc, char *argv[])
         return 1;
 
 	}
+    if(pthread_create(&fourthsock, NULL, func_sock, (void *)&port3)) {
+
+        fprintf(stderr, "Error creating thread\n");
+        return 1;
+
+        }
+        if(pthread_create(&fifthsock, NULL, func_sock, (void *)&port4)) {
+
+        fprintf(stderr, "Error creating thread\n");
+        return 1;
+
+    }
 	total_packets = get_total_packets();
 	
 	gettimeofday(&start, NULL);
@@ -421,12 +434,23 @@ int main(int argc, char *argv[])
 	return 2;
 
 	}
-	 if(pthread_join(thirdsock, NULL)) {
+	if(pthread_join(thirdsock, NULL)) {
 
 	fprintf(stderr, "Error joining thread\n");
 	return 2;
 
 	}
+    if(pthread_join(fourthsock, NULL)) {
+
+    fprintf(stderr, "Error joining thread\n");
+    return 2;
+
+    }
+    if(pthread_join(fifthsock, NULL)) {
+
+    fprintf(stderr, "Error joining thread\n");
+    return 2;
+    }
 	
 
     return 0;
