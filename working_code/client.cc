@@ -22,7 +22,10 @@ using namespace std;
 int flag =1;
 int invert = 0;
 static int sequence_number = 1;
-int total_packets = 0; 
+int total_packets = 0;
+char *file_name;
+
+pthread_t inverted_thread; 
 
 void error(const char* msg)
 {
@@ -68,6 +71,62 @@ void * tcp_listener(void *arg)
 	}
 
 }
+
+
+void *inversion_send(void *arg1)
+{
+  char *arg2=(char*)arg1;
+  udp_socket_sender socket3(SOCK3,arg2);
+  udp_socket_sender socket4(SOCK4,arg2);
+  int inverted_sequence_number=total_packets;
+  int n,n_1;
+  FILE *fd = fopen(file_name,"r+");
+  if(fd == NULL)
+  {
+      error("ERROR IN OPENING A FILE in the inverted thread...");
+
+  }
+
+  char *buffer;
+  while(1)
+  {
+     
+       iterator=ITERATOR;
+       buffer = (char *)malloc(sizeof(char)*(PACKETSIZE));
+       append_sequence_number(buffer,inverted_sequence_number);
+       
+       fseek(fd,(inverted_sequence_number-1)*DATASIZE,SEEK_SET); 
+       m = fread(buffer + sizeof(int), 1, DATASIZE,fd);
+       inverted_sequence_number--;
+       if(inverted_sequence_number== 0)
+       {
+          inverted_sequence_number = total_packets;
+          continue;
+       }
+            
+       printf("sending seq_num %d\n",(sequence_number-1));
+        
+       while(iterator>0)
+       {
+        
+            n=socket3.send_packet_through_socket(buffer,m+sizeof(int));
+            n_1=socket4.send_packet_through_socket(buffer,m+sizeof(int));
+            usleep(DELAY);
+            iterator--;
+       }   
+        
+       free(buffer);
+             
+             
+    }
+    
+    socket3.close_socket();
+    socket4.close_socket();
+    fclose(fd);
+}
+
+
+
  
 int main(int argc, char* argv[])
 {
@@ -92,7 +151,8 @@ int main(int argc, char* argv[])
     send_total_packets(total_packets, remainder,argv[2]); 
     pthread_t tcp_listen;
     pthread_create(&tcp_listen, NULL, tcp_listener, NULL);
-    
+
+
     int last_packet_no = 0;
        
     int portno,portno_1,portno_2, n,n_1,n_2,data_read,iterator=2;
@@ -105,14 +165,16 @@ int main(int argc, char* argv[])
         fprintf(stderr, "usage %s <source> <destination>  <port1> \n", argv[0]);
         exit(0);
     }
+
+    file_name=argv[1];
+    //This thread should be called after initializing the global variable total_packets
+    pthread_create(&inverted_thread, NULL, inversion_send, (void*)argv[2]);
  
     portno = atoi(argv[3]);    
+    
     udp_socket_sender socket1(portno,argv[2]);
     udp_socket_sender socket2(SOCK2,argv[2]);
-    udp_socket_sender socket3(SOCK3,argv[2]);
-    udp_socket_sender socket4(SOCK4,argv[2]);
-    udp_socket_sender socket5(SOCK5,argv[2]); 
-
+        
 
     FILE *fd = fopen(argv[1],"r+");
     if(fd == NULL)
@@ -166,8 +228,7 @@ int main(int argc, char* argv[])
 		    
           n=socket1.send_packet_through_socket(buffer,m+sizeof(int));
           n_1=socket2.send_packet_through_socket(buffer,m+sizeof(int));
-          n_2=socket3.send_packet_through_socket(buffer,m+sizeof(int));
-        	usleep(DELAY);
+          usleep(DELAY);
         	iterator--;
         }
       
@@ -189,9 +250,6 @@ int main(int argc, char* argv[])
 
    socket1.close_socket();
    socket2.close_socket();
-   socket3.close_socket();
-   socket4.close_socket();
-   socket5.close_socket();
    fclose(fd);
       
    return 0;
