@@ -38,7 +38,7 @@ void send_total_packets(int total, int remainder, char receiver[NI_MAXHOST])
   bzero(buffer, 10);
 
   int portno = INITIAL_PORT;
-  tcp_socket_sender tcp_socket2(portno);
+  tcp_socket_sender tcp_socket2(portno,receiver);
   
   int x = htonl(total);
   memcpy(buffer,&x, sizeof(int));
@@ -100,10 +100,11 @@ int main(int argc, char* argv[])
     char filename[256];
     bzero(filename,256);
  
-    if (argc < 4) {
+    if (argc < 4)
+    {
         fprintf(stderr, "usage %s <source> <destination>  <port1> \n", argv[0]);
         exit(0);
-     }
+    }
  
     portno = atoi(argv[3]);    
     udp_socket_sender socket1(portno,argv[2]);
@@ -173,7 +174,8 @@ int main(int argc, char* argv[])
         counter = n+counter;
         if (n < 0)
           error("ERROR on sendto");
-          free(buffer);
+        
+        free(buffer);
              
              
     }
@@ -181,11 +183,10 @@ int main(int argc, char* argv[])
 
     if(pthread_join(tcp_listen, NULL)) 
     {
-
 	    fprintf(stderr, "Error joining thread\n");
-	     return 2;
+      return 2;
+    }
 
-	 }
    socket1.close_socket();
    socket2.close_socket();
    socket3.close_socket();

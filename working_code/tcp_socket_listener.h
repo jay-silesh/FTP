@@ -10,8 +10,14 @@ public:
 	int write_to_tcp_socket(char *buffer,int buffer_size);
 	void close_tcp_listener_socket();
 	void newclose_tcp_listener_socket();
+	struct sockaddr_in get_sockaddr();	
 
 };
+
+struct sockaddr_in tcp_socket_listener::get_sockaddr()
+{
+	return cli_addr;
+}
 
 void tcp_socket_listener::close_tcp_listener_socket()
 {
@@ -58,3 +64,5 @@ tcp_socket_listener::tcp_socket_listener(int tcp_port)
 	if (newsockfd < 0)
 		perror("ERROR on accept");
 }
+
+

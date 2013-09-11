@@ -70,6 +70,7 @@ int get_total_packets()
 	memcpy(&y, buffer+sizeof(int), sizeof(int));
 	last_length = ntohl(y);
 	
+    cli_addr_global=tcp_socket1.get_sockaddr();
     tcp_socket1.close_tcp_listener_socket();
     tcp_socket1.newclose_tcp_listener_socket();
     return x;
@@ -81,7 +82,7 @@ void Terminate(char * server_ip)
 {
 	printf("Terminate started\n");
     char buffer[256],buffer_1[256];    
-    tcp_socket_sender tcp_socket2(TCP_PORT);
+    tcp_socket_sender tcp_socket2(TCP_PORT,&cli_addr_global);
     printf("Connected to Sender\n ");
     char BUffer[4];
 	strcpy(BUffer,"END");
