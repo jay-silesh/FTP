@@ -11,7 +11,7 @@
 #include <netdb.h>
 #include <sstream>
 #include <pthread.h>
-#include "parallel_socket.h"
+#include "udp_socket_sender.h"
 #include "tcp_socket_listener.h"
 #include "tcp_socket_sender.h"
 #include "common.h"
@@ -106,11 +106,11 @@ int main(int argc, char* argv[])
      }
  
     portno = atoi(argv[3]);    
-    parallel_socket socket1(portno,argv[2]);
-    parallel_socket socket2(SOCK2,argv[2]);
-    parallel_socket socket3(SOCK3,argv[2]);
-    parallel_socket socket4(SOCK4,argv[2]);
-    parallel_socket socket5(SOCK5,argv[2]); 
+    udp_socket_sender socket1(portno,argv[2]);
+    udp_socket_sender socket2(SOCK2,argv[2]);
+    udp_socket_sender socket3(SOCK3,argv[2]);
+    udp_socket_sender socket4(SOCK4,argv[2]);
+    udp_socket_sender socket5(SOCK5,argv[2]); 
 
 
     FILE *fd = fopen(argv[1],"r+");

@@ -15,3 +15,12 @@ void append_sequence_number(char *packet, int sequence_number)
     int x = htonl(sequence_number);
     memcpy(packet + 0, &x, sizeof(int));
 }
+
+int get_sequence_number(char *packet)
+{
+    
+    int seq, x;    
+    memcpy(&seq, packet, sizeof(int));
+    x = ntohl(seq);
+    return x;   
+}

@@ -9,6 +9,7 @@ public:
 	int read_from_tcp_socket(char *buffer,int buffer_size);
 	int write_to_tcp_socket(char *buffer,int buffer_size);
 	void close_tcp_listener_socket();
+	void newclose_tcp_listener_socket();
 
 };
 
@@ -17,7 +18,10 @@ void tcp_socket_listener::close_tcp_listener_socket()
 	close(sockfd);
 }
 
-
+void tcp_socket_listener::newclose_tcp_listener_socket()
+{
+	close(newsockfd);
+}
 int tcp_socket_listener::write_to_tcp_socket(char *buffer,int buffer_size)
 {
 	int n = write(newsockfd,buffer, buffer_size);
