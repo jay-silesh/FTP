@@ -187,6 +187,10 @@ int main(int argc, char* argv[])
 
 	 }
    socket1.close_socket();
+   socket2.close_socket();
+   socket3.close_socket();
+   socket4.close_socket();
+   socket5.close_socket();
    fclose(fd);
       
    return 0;
